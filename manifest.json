@@ -1,1 +1,11 @@
+{
+  "name": "Ziyan Olmasın",
+  "short_name": "Ziyan Olmasın",
+  "description": "Buzdolabındakileri ve gıda raf ömürlerini takip etme uygulaması.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAFAF7",
+  "theme_color": "#2B2B26",
+  "icons": []
+}
 
