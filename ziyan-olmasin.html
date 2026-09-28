@@ -1,0 +1,483 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Ziyan Olmasın</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#FAFAF7; --ink:#2B2B26; --muted:#8A8A7E; --line:#EAEAE2;
+    --green:#4C9A6B; --green-bg:#EAF5EE;
+    --amber:#DB9A2E; --amber-bg:#FBF2DF;
+    --red:#D0604A;   --red-bg:#FAE9E4;
+    --blue:#4C7EA0; --blue-bg:#E8F0F5;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:'Nunito',system-ui,sans-serif;}
+  .wrap{max-width:480px; margin:0 auto; padding:26px 18px 150px; min-height:100vh; position:relative;}
+  h1{font-size:22px; font-weight:800; text-align:center; margin:6px 0 4px;}
+  .sub{text-align:center; color:var(--muted); font-size:13px; margin-bottom:18px;}
+  .empty{text-align:center; color:var(--muted); padding:60px 20px; font-size:14.5px; line-height:1.6;}
+
+  .loc-tabs{display:flex; gap:6px; margin-bottom:18px; background:#F0F0EA; border-radius:12px; padding:4px;}
+  .loc-tab{flex:1; padding:8px 0; border:none; background:transparent; border-radius:9px; font-family:inherit; font-size:13px; font-weight:700; color:var(--muted); cursor:pointer;}
+  .loc-tab.active{background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.08);}
+
+  .item{display:flex; align-items:center; gap:10px; padding:14px 14px; border-radius:14px; margin-bottom:10px; background:#fff; border-left:5px solid var(--line);}
+  .item.green{border-left-color:var(--green); background:var(--green-bg);}
+  .item.amber{border-left-color:var(--amber); background:var(--amber-bg);}
+  .item.red{border-left-color:var(--red); background:var(--red-bg);}
+  .item .name{font-weight:700; font-size:15.5px;}
+  .item .sub2{font-size:12px; color:var(--muted); margin-top:2px;}
+  .item .days{font-size:12.5px; font-weight:600; white-space:nowrap;}
+  .item.green .days{color:var(--green);} .item.amber .days{color:var(--amber);} .item.red .days{color:var(--red);}
+  .icon-btn{width:29px; height:29px; border-radius:50%; border:1.5px solid var(--line); background:#fff; color:var(--muted); font-size:14px; cursor:pointer; flex-shrink:0; display:flex; align-items:center; justify-content:center;}
+
+  .fab{position:fixed; right:22px; bottom:88px; width:60px; height:60px; border-radius:50%; background:var(--ink); color:#fff; font-size:28px; border:none; cursor:pointer; box-shadow:0 6px 18px rgba(0,0,0,.25); display:flex; align-items:center; justify-content:center; line-height:1;}
+
+  .tabbar{position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--line); display:flex; padding:8px 0 calc(8px + env(safe-area-inset-bottom,0px));}
+  .tab-btn{flex:1; background:none; border:none; font-family:inherit; font-size:11px; font-weight:700; color:var(--muted); text-align:center; padding:4px 0; cursor:pointer; line-height:1.6;}
+  .tab-btn.active{color:var(--ink);}
+
+  .sheet-bg{position:fixed; inset:0; background:rgba(43,43,38,.4); display:none; align-items:flex-end; justify-content:center; z-index:20;}
+  .sheet-bg.show{display:flex;}
+  .sheet{background:var(--bg); width:100%; max-width:480px; border-radius:20px 20px 0 0; padding:22px 20px 30px; max-height:85vh; overflow-y:auto;}
+  .sheet h2{font-size:17px; margin:0 0 16px; text-align:center;}
+  .voice-btn{width:100%; padding:16px; border-radius:14px; border:none; background:var(--ink); color:#fff; font-family:inherit; font-size:15px; font-weight:700; cursor:pointer; margin-bottom:12px; display:flex; align-items:center; justify-content:center; gap:8px;}
+  .voice-btn.listening{background:var(--red);}
+  .or-line{text-align:center; color:var(--muted); font-size:12.5px; margin:10px 0;}
+  .text-row{display:flex; gap:8px;}
+  .text-row input, .custom-row input{flex:1; padding:13px 14px; border-radius:12px; border:1px solid var(--line); font-family:inherit; font-size:14.5px; background:#fff;}
+  .text-row input:focus, .custom-row input:focus{outline:none; border-color:var(--ink);}
+  .text-row button, .custom-row button{padding:0 18px; border-radius:12px; border:none; background:var(--ink); color:#fff; font-weight:700; font-size:14px; cursor:pointer;}
+  .transcript-note{font-size:12.5px; color:var(--muted); text-align:center; margin-top:10px; min-height:16px;}
+  .pick-panel .found-as{font-size:13px; color:var(--muted); margin-bottom:10px; text-align:center;}
+  .chip-row{display:flex; flex-wrap:wrap; gap:8px; justify-content:center;}
+  .chip{padding:9px 16px; border-radius:20px; border:1px solid var(--line); background:#fff; font-family:inherit; font-size:13.5px; cursor:pointer;}
+  .chip:hover{border-color:var(--ink);}
+  .close-sheet{display:block; margin:16px auto 0; background:none; border:none; color:var(--muted); font-size:13.5px; cursor:pointer;}
+  .ios-note{font-size:11.5px; color:var(--muted); text-align:center; margin-top:8px;}
+  .custom-row{display:flex; gap:8px; margin-top:12px;}
+  .field-label{font-size:12.5px; color:var(--muted); margin:14px 0 6px;}
+  .mode-tabs{display:flex; gap:6px; margin-bottom:18px; background:#F0F0EA; border-radius:12px; padding:4px;}
+  .mode-tab{flex:1; padding:9px 0; border:none; background:transparent; border-radius:9px; font-family:inherit; font-size:13.5px; font-weight:700; color:var(--muted); cursor:pointer;}
+  .mode-tab.active{background:#fff; color:var(--ink); box-shadow:0 1px 3px rgba(0,0,0,.08);}
+  .preset-list{display:flex; flex-direction:column; gap:8px; margin-bottom:14px;}
+  .preset-btn{display:flex; justify-content:space-between; align-items:center; text-align:left; padding:13px 15px; border-radius:12px; border:1px solid var(--line); background:#fff; font-family:inherit; cursor:pointer;}
+  .preset-btn .p-name{font-weight:700; font-size:14px;}
+  .preset-btn .p-hours{font-size:12.5px; color:var(--muted);}
+  .loc-toggle{display:flex; gap:8px; margin-bottom:16px;}
+  .loc-opt{flex:1; padding:12px 0; border-radius:12px; border:1.5px solid var(--line); background:#fff; font-family:inherit; font-weight:700; font-size:13.5px; cursor:pointer; color:var(--muted);}
+  .loc-opt.active{border-color:var(--ink); color:var(--ink); background:#F3F2ED;}
+
+  .shop-row{display:flex; align-items:center; gap:10px; padding:12px 4px; border-bottom:1px solid var(--line);}
+  .shop-row .name{flex:1; font-size:14.5px; font-weight:600;}
+  .summary-card{background:#fff; border-radius:14px; padding:20px; margin-bottom:14px;}
+  .summary-num{font-size:30px; font-weight:800;}
+  .summary-row{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
+  .bar{height:10px; border-radius:6px; background:var(--line); overflow:hidden; display:flex; margin:10px 0;}
+  .bar .seg-good{background:var(--green);} .bar .seg-bad{background:var(--red);}
+  .waste-list{font-size:13px; color:var(--muted); line-height:1.6;}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+const FOOD_DB = {
+  'süt':5,'yumurta':21,'tavuk':2,'kıyma':1,'kırmızı et':3,'balık':1,
+  'üzüm':5,'çilek':3,'muz':5,'elma':21,'portakal':14,'mandalina':14,'limon':21,
+  'domates':7,'salatalık':7,'marul':5,'ıspanak':4,'biber':10,'patlıcan':7,
+  'kabak':7,'havuç':21,'brokoli':7,'karnabahar':7,'mantar':5,
+  'peynir':14,'yoğurt':10,'tereyağı':30,'kaymak':7,'krema':7,
+  'ekmek':3,'pasta':3,'börek':3,'salça':10,'reçel':30,'zeytin':30,'hummus':5,
+  'pirinç':4,'makarna':4,'çorba':3,'yemek':3,'pilav':4,
+  'soğan':30,'sarımsak':30,'patates':21,'kavun':5,'karpuz':5,'avokado':4,'kiraz':5,
+  'et suyu':4,'sos':10,'hamur':5
+};
+const FREEZER_CHIPS = [30,60,90,180];
+const FRIDGE_CHIPS = [2,5,7,14,30];
+
+const REMINDER_PRESETS = [
+  { name:'Yoğurt mayalanıyor', hours:6, note:'Yoğurdun mayalanma süresi doldu, buzdolabına kaldır!' },
+  { name:'Kefir mayalanıyor', hours:24, note:'Kefirin mayalanma süresi doldu, süzüp buzdolabına kaldır!' },
+  { name:'Ekmek hamuru buzdolabında', hours:12, note:'Hamurun vakti geldi, kontrol et — fazla mayalanmasın!' },
+];
+
+function norm(s){
+  return s.toLowerCase().replace(/i̇/g,'i').trim();
+}
+function findInDB(text){
+  const t = norm(text);
+  for(const key in FOOD_DB){ if(t.includes(key)) return key; }
+  return null;
+}
+
+let state = {
+  items: [], shopping: [], history: [],
+  tab: 'fridge', locationFilter: 'all',
+  sheetOpen:false, stage:'choose', mode:'food',
+  pendingName:'', pendingLocation:'buzdolabı',
+  recognizing:false, loading:true
+};
+
+async function safeGet(key){
+  try{ const r = await window.storage.get(key, false); return r ? JSON.parse(r.value) : null; }
+  catch(e){ return null; }
+}
+async function loadAll(){
+  state.items = (await safeGet('fridge-items')) || [];
+  state.items.forEach(i => { if(!i.type) i.type='food'; if(!i.location) i.location='buzdolabı'; });
+  state.shopping = (await safeGet('shopping-list')) || [];
+  state.history = (await safeGet('waste-history')) || [];
+  state.loading = false;
+  render();
+  checkUrgentNotify();
+}
+async function saveItems(){ await window.storage.set('fridge-items', JSON.stringify(state.items), false); }
+async function saveShopping(){ await window.storage.set('shopping-list', JSON.stringify(state.shopping), false); }
+async function saveHistory(){ await window.storage.set('waste-history', JSON.stringify(state.history), false); }
+
+/* ---------- zaman / renk yardımcıları ---------- */
+function daysLeft(item){
+  const ms = new Date(item.expiry).setHours(0,0,0,0) - new Date().setHours(0,0,0,0);
+  return Math.round(ms / 86400000);
+}
+function daysLabel(d){
+  if(d < 0) return Math.abs(d) + ' gün önce geçti';
+  if(d === 0) return 'Bugün son gün';
+  if(d === 1) return 'Yarın son gün';
+  return d + ' gün kaldı';
+}
+function msLeft(item){
+  const target = item.type==='reminder' ? item.dueAt : item.expiry;
+  return new Date(target).getTime() - Date.now();
+}
+function itemUrgency(item){
+  if(item.type==='reminder'){
+    const ms = msLeft(item);
+    if(ms <= 0) return 'red';
+    if(ms <= 2*3600*1000) return 'amber';
+    return 'green';
+  }
+  const d = daysLeft(item);
+  if(d <= 0) return 'red';
+  if(d <= 3) return 'amber';
+  return 'green';
+}
+function itemLabel(item){
+  if(item.type==='reminder'){
+    const ms = msLeft(item);
+    const mins = Math.round(Math.abs(ms)/60000);
+    if(ms <= 0) return mins<60 ? mins+' dk önce geçti' : Math.floor(mins/60)+' sa önce geçti';
+    if(mins < 60) return mins + ' dk kaldı';
+    if(mins < 1440){ const h=Math.floor(mins/60), m=mins%60; return m>0? `${h} sa ${m} dk kaldı` : `${h} sa kaldı`; }
+    const d=Math.floor(mins/1440), h=Math.floor((mins%1440)/60);
+    return h>0? `${d} gün ${h} sa kaldı` : `${d} gün kaldı`;
+  }
+  return daysLabel(daysLeft(item));
+}
+
+/* ---------- ekleme ---------- */
+function addItem(name, shelfDays){
+  const now = new Date();
+  const expiry = new Date(now.getTime() + shelfDays*86400000);
+  state.items.push({
+    id:'i'+Math.random().toString(36).slice(2,9), type:'food',
+    name:name.charAt(0).toUpperCase()+name.slice(1),
+    location: state.pendingLocation,
+    added: now.toISOString(), expiry: expiry.toISOString()
+  });
+  saveItems(); closeSheet(); render();
+}
+function addReminder(name, hours, note){
+  const now = new Date();
+  const dueAt = new Date(now.getTime() + hours*3600*1000);
+  state.items.push({
+    id:'i'+Math.random().toString(36).slice(2,9), type:'reminder',
+    name:name.charAt(0).toUpperCase()+name.slice(1),
+    added: now.toISOString(), dueAt: dueAt.toISOString(), note: note||''
+  });
+  saveItems(); closeSheet(); render();
+}
+
+/* ---------- çıkarma + geçmiş + otomatik alışveriş listesi ---------- */
+function logHistory(name, action, wasExpired){
+  state.history.push({id:'h'+Math.random().toString(36).slice(2,9), name, action, when:Date.now(), wasExpired});
+  if(state.history.length>300) state.history = state.history.slice(-300);
+  saveHistory();
+}
+function addToShopping(name){
+  const exists = state.shopping.find(s=>s.name.toLowerCase()===name.toLowerCase());
+  if(exists) return;
+  state.shopping.push({id:'s'+Math.random().toString(36).slice(2,9), name, addedAt:Date.now()});
+  saveShopping();
+}
+function removeItem(id, action){
+  const item = state.items.find(i=>i.id===id);
+  if(!item) return;
+  state.items = state.items.filter(i=>i.id!==id);
+  if(item.type==='food'){
+    logHistory(item.name, action, msLeft(item)<=0);
+    addToShopping(item.name);
+  }
+  saveItems();
+  render();
+}
+
+function removeShopping(id){
+  state.shopping = state.shopping.filter(s=>s.id!==id);
+  saveShopping(); render();
+}
+function addShoppingManual(){
+  const input = document.getElementById('shopInput');
+  const val = input.value.trim();
+  if(!val) return;
+  addToShopping(val);
+  input.value='';
+  render();
+}
+
+/* ---------- PDF etiket ---------- */
+function printLabel(item){
+  try{
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF({unit:'mm', format:[80,50]});
+    doc.setFont('helvetica','bold'); doc.setFontSize(16);
+    doc.text(item.name, 40, 18, {align:'center'});
+    doc.setFont('helvetica','normal'); doc.setFontSize(11);
+    const addedStr = new Date(item.added).toLocaleDateString('tr-TR');
+    doc.text('Dondurma tarihi: ' + addedStr, 40, 30, {align:'center'});
+    doc.setFontSize(9); doc.setTextColor(140);
+    doc.text('Ziyan Olmasın', 40, 42, {align:'center'});
+    doc.save(item.name.replace(/\s+/g,'_') + '_etiket.pdf');
+  }catch(e){
+    alert('Etiket oluşturulamadı, internet bağlantını kontrol et.');
+  }
+}
+
+/* ---------- sekmeler / sheet kontrol ---------- */
+function setTab(t){ state.tab=t; render(); }
+function setLocFilter(l){ state.locationFilter=l; render(); }
+function openSheet(){ state.sheetOpen=true; state.stage='choose'; state.mode='food'; state.pendingName=''; state.pendingLocation='buzdolabı'; render(); }
+function closeSheet(){ state.sheetOpen=false; render(); }
+function setMode(m){ state.mode=m; render(); }
+function setPendingLoc(l){ state.pendingLocation=l; render(); }
+
+function checkUrgentNotify(){
+  if(!('Notification' in window)) return;
+  const urgentFood = state.items.filter(i => i.type!=='reminder' && daysLeft(i) <= 1);
+  const urgentReminders = state.items.filter(i => i.type==='reminder' && msLeft(i) <= 30*60000);
+  if(urgentFood.length===0 && urgentReminders.length===0) return;
+  const parts = [];
+  if(urgentFood.length) parts.push(urgentFood.map(i=>i.name).join(', ') + ' süresi doluyor');
+  urgentReminders.forEach(i => parts.push(i.note || (i.name + ' zamanı geldi')));
+  if(Notification.permission === 'granted'){
+    new Notification('Ziyan Olmasın', {body: parts.join(' · ')});
+  } else if(Notification.permission !== 'denied'){
+    Notification.requestPermission();
+  }
+}
+
+/* ---------- ses tanıma ---------- */
+let recognition = null;
+function startVoice(){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if(!SR){ document.getElementById('transcript-note').textContent='Bu tarayıcı sesli girişi desteklemiyor, yazarak eklemeyi dene.'; return; }
+  recognition = new SR();
+  recognition.lang = 'tr-TR'; recognition.interimResults=false; recognition.maxAlternatives=1;
+  state.recognizing = true; render();
+  recognition.start();
+  recognition.onresult = (e)=>{ state.recognizing=false; handleInput(e.results[0][0].transcript); };
+  recognition.onerror = ()=>{ state.recognizing=false; document.getElementById('transcript-note').textContent='Anlaşılamadı, tekrar dene ya da yazarak ekle.'; render(); };
+  recognition.onend = ()=>{ state.recognizing=false; };
+}
+
+function handleInput(text){
+  if(state.pendingLocation === 'dondurucu'){
+    state.stage='pick'; state.pendingName=text.trim(); render(); return;
+  }
+  const match = findInDB(text);
+  if(match){ addItem(match, FOOD_DB[match]); }
+  else{ state.stage='pick'; state.pendingName=text.trim(); render(); }
+}
+function submitText(){
+  const val = document.getElementById('textInput').value.trim();
+  if(!val) return;
+  handleInput(val);
+}
+function submitCustomDays(){
+  const val = parseInt(document.getElementById('customDays').value,10);
+  if(!val || val<1) return;
+  addItem(state.pendingName, val);
+}
+function submitCustomReminder(){
+  const name = document.getElementById('reminderName').value.trim();
+  const hours = parseInt(document.getElementById('reminderHours').value,10);
+  if(!name || !hours || hours<1) return;
+  addReminder(name, hours, '');
+}
+
+/* ---------- render ---------- */
+function render(){
+  const app = document.getElementById('app');
+  if(state.loading){ app.innerHTML = '<div class="empty">Yükleniyor…</div>'; return; }
+
+  let html = '';
+  if(state.tab==='fridge') html = renderFridge();
+  else if(state.tab==='shopping') html = renderShopping();
+  else html = renderSummary();
+
+  html += `<div class="tabbar">
+    <button class="tab-btn ${state.tab==='fridge'?'active':''}" onclick="setTab('fridge')">🧊<br>Dolabım</button>
+    <button class="tab-btn ${state.tab==='shopping'?'active':''}" onclick="setTab('shopping')">🛒<br>Liste${state.shopping.length? ' ('+state.shopping.length+')':''}</button>
+    <button class="tab-btn ${state.tab==='summary'?'active':''}" onclick="setTab('summary')">📊<br>Özet</button>
+  </div>`;
+
+  if(state.tab==='fridge'){
+    html += `<button class="fab" onclick="openSheet()">+</button>`;
+    html += renderSheet();
+  }
+
+  app.innerHTML = html;
+  attachInputHandlers();
+}
+
+function renderFridge(){
+  const filtered = state.items.filter(i => i.type==='reminder' || state.locationFilter==='all' || i.location===state.locationFilter);
+  const sorted = [...filtered].sort((a,b)=>msLeft(a)-msLeft(b));
+
+  let html = '<h1>Ziyan Olmasın</h1><div class="sub">Buzdolabındakileri unutma</div>';
+  html += `<div class="loc-tabs">
+    <button class="loc-tab ${state.locationFilter==='all'?'active':''}" onclick="setLocFilter('all')">Tümü</button>
+    <button class="loc-tab ${state.locationFilter==='buzdolabı'?'active':''}" onclick="setLocFilter('buzdolabı')">🧊 Buzdolabı</button>
+    <button class="loc-tab ${state.locationFilter==='dondurucu'?'active':''}" onclick="setLocFilter('dondurucu')">❄️ Dondurucu</button>
+  </div>`;
+
+  if(sorted.length===0){
+    html += '<div class="empty">Henüz bir şey eklemedin.<br>Sağ alttaki + ile başla.</div>';
+  } else {
+    html += '<div class="list">';
+    sorted.forEach(item=>{
+      const cls = itemUrgency(item);
+      const icon = item.type==='reminder' ? '⏱ ' : (item.location==='dondurucu' ? '❄️ ' : '');
+      const sub = (item.type==='reminder' && item.note) ? `<div class="sub2">${item.note}</div>` : '';
+      let actions = '';
+      if(item.type==='reminder'){
+        actions = `<button class="icon-btn" onclick="removeItem('${item.id}','tamamlandı')" title="Tamamlandı">✓</button>`;
+      } else {
+        actions = `<button class="icon-btn" onclick="removeItem('${item.id}','tüketildi')" title="Tükettim">✓</button>
+                   <button class="icon-btn" onclick="removeItem('${item.id}','atıldı')" title="Attım">🗑</button>`;
+        if(item.location==='dondurucu'){
+          actions = `<button class="icon-btn" onclick='printLabel(${JSON.stringify(item)})' title="Etiket yazdır">🖨</button>` + actions;
+        }
+      }
+      html += `<div class="item ${cls}">
+        <div style="flex:1;"><div class="name">${icon}${item.name}</div>${sub}</div>
+        <div class="days">${itemLabel(item)}</div>
+        ${actions}
+      </div>`;
+    });
+    html += '</div>';
+  }
+  return html;
+}
+
+function renderSheet(){
+  let html = `<div class="sheet-bg ${state.sheetOpen?'show':''}" id="sheetbg" onclick="if(event.target.id==='sheetbg') closeSheet()"><div class="sheet">`;
+
+  if(state.stage==='choose'){
+    html += `<div class="mode-tabs">
+      <button class="mode-tab ${state.mode==='food'?'active':''}" onclick="setMode('food')">🥗 Gıda</button>
+      <button class="mode-tab ${state.mode==='reminder'?'active':''}" onclick="setMode('reminder')">⏱ Hatırlatıcı</button>
+    </div>`;
+    if(state.mode==='food'){
+      html += `<div class="loc-toggle">
+        <button class="loc-opt ${state.pendingLocation==='buzdolabı'?'active':''}" onclick="setPendingLoc('buzdolabı')">🧊 Buzdolabı</button>
+        <button class="loc-opt ${state.pendingLocation==='dondurucu'?'active':''}" onclick="setPendingLoc('dondurucu')">❄️ Dondurucu</button>
+      </div>
+      <button class="voice-btn ${state.recognizing?'listening':''}" onclick="startVoice()">🎤 ${state.recognizing?'Dinliyorum…':'Sesli ekle'}</button>
+      <div id="transcript-note" class="transcript-note"></div>
+      <div class="or-line">veya</div>
+      <div class="text-row"><input type="text" id="textInput" placeholder="Örn. çilek"><button onclick="submitText()">Ekle</button></div>
+      <div class="ios-note">iPhone'da sesli giriş bazı tarayıcılarda çalışmayabilir</div>`;
+    } else {
+      html += `<div class="preset-list">`;
+      REMINDER_PRESETS.forEach(p=>{
+        html += `<button class="preset-btn" onclick="addReminder('${p.name}',${p.hours},'${p.note.replace(/'/g,"\\'")}')">
+          <span class="p-name">${p.name}</span><span class="p-hours">${p.hours} saat sonra</span></button>`;
+      });
+      html += `</div><div class="field-label">veya kendi hatırlatıcını kur</div>
+      <input type="text" id="reminderName" placeholder="Örn. Turşu mayalanıyor">
+      <div class="custom-row"><input type="number" id="reminderHours" placeholder="kaç saat sonra" min="1"><button onclick="submitCustomReminder()">Ekle</button></div>`;
+    }
+  } else if(state.stage==='pick'){
+    const chips = state.pendingLocation==='dondurucu' ? FREEZER_CHIPS : FRIDGE_CHIPS;
+    const question = state.pendingLocation==='dondurucu' ? 'Dondurucuda kaç gün kalabilir?' : `"${state.pendingName}" listede yok, kaç gün dayanır?`;
+    html += `<h2>Raf ömrünü seç</h2><div class="pick-panel">
+      <div class="found-as">${question}</div>
+      <div class="chip-row">${chips.map(d=>`<button class="chip" onclick="addItem(state.pendingName,${d})">${d} gün</button>`).join('')}</div>
+      <div class="field-label">veya kendin gir</div>
+      <div class="custom-row"><input type="number" id="customDays" placeholder="gün sayısı" min="1"><button onclick="submitCustomDays()">Ekle</button></div>
+    </div>`;
+  }
+  html += `<button class="close-sheet" onclick="closeSheet()">Vazgeç</button></div></div>`;
+  return html;
+}
+
+function renderShopping(){
+  let html = '<h1>Alışveriş Listesi</h1><div class="sub">Bitenler otomatik burada birikir</div>';
+  if(state.shopping.length===0){
+    html += '<div class="empty">Liste boş.<br>Bir şey tükettiğinde ya da attığında otomatik eklenir.</div>';
+  } else {
+    html += '<div>';
+    [...state.shopping].sort((a,b)=>b.addedAt-a.addedAt).forEach(s=>{
+      html += `<div class="shop-row"><div class="name">${s.name}</div>
+        <button class="icon-btn" onclick="removeShopping('${s.id}')" title="Aldım">✓</button></div>`;
+    });
+    html += '</div>';
+  }
+  html += `<div class="field-label">elle ekle</div>
+    <div class="text-row"><input type="text" id="shopInput" placeholder="Örn. tereyağı"><button onclick="addShoppingManual()">Ekle</button></div>`;
+  return html;
+}
+
+function renderSummary(){
+  const weekAgo = Date.now() - 7*86400000;
+  const recent = state.history.filter(h=>h.when>=weekAgo);
+  const consumed = recent.filter(h=>h.action==='tüketildi');
+  const wasted = recent.filter(h=>h.action==='atıldı');
+  const total = consumed.length + wasted.length;
+  const pct = total>0 ? Math.round(consumed.length/total*100) : null;
+
+  let html = '<h1>Haftalık Özet</h1><div class="sub">Son 7 gün</div>';
+  html += `<div class="summary-card">
+    <div class="summary-row"><span>Tüketilen</span><span class="summary-num" style="color:var(--green)">${consumed.length}</span></div>
+    <div class="summary-row"><span>Ziyan olan</span><span class="summary-num" style="color:var(--red)">${wasted.length}</span></div>`;
+  if(total>0){
+    html += `<div class="bar"><div class="seg-good" style="width:${pct}%"></div><div class="seg-bad" style="width:${100-pct}%"></div></div>
+    <div style="text-align:center; font-weight:700;">%${pct} başarı</div>`;
+  } else {
+    html += `<div class="empty" style="padding:14px 0;">Bu hafta henüz veri yok.</div>`;
+  }
+  html += `</div>`;
+  if(wasted.length>0){
+    html += `<div class="waste-list"><strong>Ziyan olanlar:</strong> ${wasted.map(w=>w.name).join(', ')}</div>`;
+  }
+  return html;
+}
+
+function attachInputHandlers(){
+  const ti = document.getElementById('textInput'); if(ti) ti.addEventListener('keydown', e=>{ if(e.key==='Enter') submitText(); });
+  const cd = document.getElementById('customDays'); if(cd) cd.addEventListener('keydown', e=>{ if(e.key==='Enter') submitCustomDays(); });
+  const rh = document.getElementById('reminderHours'); if(rh) rh.addEventListener('keydown', e=>{ if(e.key==='Enter') submitCustomReminder(); });
+  const si = document.getElementById('shopInput'); if(si) si.addEventListener('keydown', e=>{ if(e.key==='Enter') addShoppingManual(); });
+}
+
+loadAll();
+</script>
+</body>
+</html>
