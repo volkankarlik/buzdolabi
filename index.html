@@ -10,6 +10,9 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.22.1/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.22.1/firebase-auth-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/9.22.1/firebase-firestore-compat.min.js"></script>
 <style>
   :root{
     --bg:#FAFAF7; --ink:#2B2B26; --muted:#8A8A7E; --line:#EAEAE2;
@@ -84,6 +87,16 @@
   .bar{height:10px; border-radius:6px; background:var(--line); overflow:hidden; display:flex; margin:10px 0;}
   .bar .seg-good{background:var(--green);} .bar .seg-bad{background:var(--red);}
   .waste-list{font-size:13px; color:var(--muted); line-height:1.6;}
+
+  .link-card{background:#fff; border:1px solid var(--line); border-radius:14px; padding:14px 16px; margin-bottom:16px;}
+  .link-card.linked{background:var(--green-bg); border-color:transparent;}
+  .link-title{font-weight:800; font-size:14.5px; margin-bottom:6px;}
+  .link-note{font-size:12.5px; color:var(--muted); line-height:1.5; margin-bottom:10px;}
+  .link-actions{display:flex; gap:8px; flex-wrap:wrap;}
+  .code-box{font-size:24px; font-weight:800; letter-spacing:3px; text-align:center; padding:10px 0; background:#fff; border-radius:10px; margin-bottom:8px; user-select:all;}
+  .link-msg{font-size:12.5px; margin-top:10px; color:var(--ink);}
+  .link-msg.err{color:var(--red);}
+  .chip:disabled{opacity:.5; cursor:default;}
 </style>
 </head>
 <body>
@@ -136,6 +149,14 @@ async function loadAll(){
   state.items.forEach(i => { if(!i.type) i.type='food'; if(!i.location) i.location='buzdolabı'; });
   state.shopping = (await safeGet('shopping-list')) || [];
   state.history = (await safeGet('waste-history')) || [];
+  cloudInit();
+  let savedCode = null;
+  try{ savedCode = localStorage.getItem('household-code'); }catch(e){}
+  if(savedCode && cloud.enabled){
+    cloud.code = savedCode;
+    state.shopping = [];
+    ensureAuth().then(() => cloudListen()).catch(err => { setCloudMsg('Bağlanılamadı: ' + (err.code || err.message), true); renderKeepInputs(); });
+  }
   state.loading = false;
   render();
   checkUrgentNotify();
@@ -143,6 +164,188 @@ async function loadAll(){
 function saveItems(){ try{ localStorage.setItem('fridge-items', JSON.stringify(state.items)); }catch(e){} }
 function saveShopping(){ try{ localStorage.setItem('shopping-list', JSON.stringify(state.shopping)); }catch(e){} }
 function saveHistory(){ try{ localStorage.setItem('waste-history', JSON.stringify(state.history)); }catch(e){} }
+
+function esc(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+/* ---------- ORTAK LİSTE (eşinle) ----------
+   Firebase konsolundan aldığın web uygulaması ayarlarını aşağıya yapıştır.
+   "BURAYA" yazan yerler doluysa ortak liste özelliği açılır.
+   Ortak olan SADECE alışveriş listesi; buzdolabı her telefonda ayrı kalır. */
+const FIREBASE_CONFIG = {
+  apiKey: "BURAYA",
+  authDomain: "BURAYA",
+  projectId: "BURAYA",
+  appId: "BURAYA"
+};
+const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 harf: 0/O ve 1/I karışmasın
+
+const cloud = { enabled:false, db:null, code:null, unsub:null, ready:false, busy:false, joinOpen:false, msg:'', err:false, msgTimer:null };
+
+function cloudConfigured(){
+  return typeof firebase !== 'undefined' && FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey.indexOf('BURAYA') === -1
+    && FIREBASE_CONFIG.projectId && FIREBASE_CONFIG.projectId.indexOf('BURAYA') === -1;
+}
+function cloudInit(){
+  if(!cloudConfigured()) return false;
+  try{
+    if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+    cloud.db = firebase.firestore();
+    try{ cloud.db.enablePersistence({ synchronizeTabs:true }).catch(()=>{}); }catch(e){}
+    cloud.enabled = true;
+    return true;
+  }catch(e){ return false; }
+}
+function ensureAuth(){
+  const auth = firebase.auth();
+  if(auth.currentUser) return Promise.resolve(auth.currentUser);
+  return new Promise((resolve, reject) => {
+    let unsub = null, signing = false;
+    unsub = auth.onAuthStateChanged(u => {
+      if(u){ if(unsub) unsub(); resolve(u); }
+      else if(!signing){
+        signing = true;
+        auth.signInAnonymously().catch(err => { if(unsub) unsub(); reject(err); });
+      }
+    });
+  });
+}
+function newCode(){
+  const a = new Uint32Array(8); crypto.getRandomValues(a);
+  return Array.from(a, n => CODE_ALPHABET[n % 32]).join('');
+}
+function fmtCode(c){ return c.slice(0,4) + '-' + c.slice(4); }
+function cleanCode(s){ return String(s||'').toUpperCase().replace(/[^A-Z0-9]/g,''); }
+function shopId(name){
+  const bytes = new TextEncoder().encode(name.trim().toLowerCase());
+  return 'n_' + Array.from(bytes, b => b.toString(16).padStart(2,'0')).join('');
+}
+function cloudShopCol(){ return cloud.db.collection('households').doc(cloud.code).collection('shopping'); }
+function cloudActive(){ return !!(cloud.enabled && cloud.code); }
+
+function setCloudMsg(text, isErr, ms){
+  cloud.msg = text; cloud.err = !!isErr;
+  if(cloud.msgTimer){ clearTimeout(cloud.msgTimer); cloud.msgTimer = null; }
+  if(text && ms){ cloud.msgTimer = setTimeout(()=>{ cloud.msg=''; renderKeepInputs(); }, ms); }
+}
+
+// Ekran yeniden çizilirken yazmakta olduğun metin silinmesin (eşin liste değiştirince)
+function renderKeepInputs(){
+  const saved = {};
+  ['shopInput','joinInput'].forEach(id => {
+    const el = document.getElementById(id);
+    if(el) saved[id] = { v: el.value, f: document.activeElement === el, s: el.selectionStart };
+  });
+  render();
+  Object.keys(saved).forEach(id => {
+    const el = document.getElementById(id);
+    if(!el) return;
+    el.value = saved[id].v;
+    if(saved[id].f){ el.focus(); try{ el.setSelectionRange(saved[id].s, saved[id].s); }catch(e){} }
+  });
+}
+
+function cloudListen(){
+  if(cloud.unsub){ cloud.unsub(); cloud.unsub = null; }
+  cloud.ready = false;
+  cloud.unsub = cloudShopCol().onSnapshot(snap => {
+    state.shopping = snap.docs.map(d => {
+      const x = d.data() || {};
+      return { id:d.id, name:String(x.name||''), addedAt:x.addedAt||0 };
+    }).filter(s => s.name);
+    cloud.ready = true;
+    renderKeepInputs();
+  }, err => {
+    setCloudMsg('Bağlantı hatası: ' + (err.code || err.message), true);
+    renderKeepInputs();
+  });
+}
+
+// Bu telefondaki mevcut listeyi ortak listeye taşıyıp ortak moda geçer
+async function cloudAttach(code){
+  const base = cloud.db.collection('households').doc(code);
+  const batch = cloud.db.batch();
+  state.shopping.slice(0, 400).forEach(s => {
+    const name = String(s.name||'').trim().slice(0, 60);
+    if(name) batch.set(base.collection('shopping').doc(shopId(name)), { name, addedAt: s.addedAt || Date.now() });
+  });
+  batch.commit().catch(()=>{});
+  try{ localStorage.setItem('shopping-list', '[]'); localStorage.setItem('household-code', code); }catch(e){}
+  cloud.code = code;
+  state.shopping = [];
+  cloudListen();
+}
+
+async function cloudCreate(){
+  if(cloud.busy) return;
+  cloud.busy = true; setCloudMsg('', false); renderKeepInputs();
+  try{
+    await ensureAuth();
+    let code = null;
+    for(let i=0; i<5 && !code; i++){
+      const c = newCode();
+      const s = await cloud.db.collection('households').doc(c).get();
+      if(!s.exists) code = c;
+    }
+    if(!code) throw new Error('Kod üretilemedi, tekrar dene');
+    await cloud.db.collection('households').doc(code).set({ createdAt: Date.now() });
+    await cloudAttach(code);
+  }catch(e){
+    setCloudMsg('Oluşturulamadı: ' + (e.code || e.message), true);
+  }finally{
+    cloud.busy = false; renderKeepInputs();
+  }
+}
+
+async function cloudJoin(){
+  if(cloud.busy) return;
+  const input = document.getElementById('joinInput');
+  const code = cleanCode(input ? input.value : '');
+  if(code.length !== 8){ setCloudMsg('Kod 8 karakter olmalı (örn. K7M2-9XQP).', true); renderKeepInputs(); return; }
+  cloud.busy = true; setCloudMsg('', false); renderKeepInputs();
+  try{
+    await ensureAuth();
+    const s = await cloud.db.collection('households').doc(code).get();
+    if(!s.exists){ setCloudMsg('Bu kodla ortak liste bulunamadı. Kodu kontrol et.', true); return; }
+    await cloudAttach(code);
+    cloud.joinOpen = false;
+  }catch(e){
+    setCloudMsg('Bağlanılamadı: ' + (e.code || e.message), true);
+  }finally{
+    cloud.busy = false; renderKeepInputs();
+  }
+}
+
+function cloudLeave(){
+  if(!confirm('Ayrılırsan liste bu telefonda kalır ama eşinle senkron olmaz. Devam edilsin mi?')) return;
+  if(cloud.unsub){ cloud.unsub(); cloud.unsub = null; }
+  cloud.code = null; cloud.ready = false; cloud.joinOpen = false;
+  try{ localStorage.removeItem('household-code'); }catch(e){}
+  saveShopping(); // şu anki listeyi bu telefonda sakla
+  setCloudMsg('', false);
+  renderKeepInputs();
+}
+
+function toggleJoin(){
+  cloud.joinOpen = !cloud.joinOpen; setCloudMsg('', false);
+  renderKeepInputs();
+  const el = document.getElementById('joinInput'); if(el) el.focus();
+}
+
+async function shareCode(){
+  const text = 'Ziyan Olmasın ortak liste kodum: ' + fmtCode(cloud.code);
+  try{
+    if(navigator.share){ await navigator.share({ text }); return; }
+  }catch(e){ if(e && e.name === 'AbortError') return; }
+  try{
+    await navigator.clipboard.writeText(fmtCode(cloud.code));
+    setCloudMsg('Kod kopyalandı: ' + fmtCode(cloud.code), false, 3000);
+  }catch(e){
+    setCloudMsg('Kopyalanamadı, kodu elle yaz: ' + fmtCode(cloud.code), true, 6000);
+  }
+  renderKeepInputs();
+}
 
 /* ---------- zaman / renk yardımcıları ---------- */
 function daysLeft(item){
@@ -214,6 +417,13 @@ function logHistory(name, action, wasExpired){
   saveHistory();
 }
 function addToShopping(name){
+  name = String(name||'').trim().slice(0, 60);
+  if(!name) return;
+  if(cloudActive()){
+    cloudShopCol().doc(shopId(name)).set({ name, addedAt: Date.now() })
+      .catch(err => { setCloudMsg('Eklenemedi: ' + (err.code || err.message), true); renderKeepInputs(); });
+    return; // liste canlı dinlendiği için ekran kendiliğinden güncellenir
+  }
   const exists = state.shopping.find(s=>s.name.toLowerCase()===name.toLowerCase());
   if(exists) return;
   state.shopping.push({id:'s'+Math.random().toString(36).slice(2,9), name, addedAt:Date.now()});
@@ -232,6 +442,11 @@ function removeItem(id, action){
 }
 
 function removeShopping(id){
+  if(cloudActive()){
+    cloudShopCol().doc(id).delete()
+      .catch(err => { setCloudMsg('Silinemedi: ' + (err.code || err.message), true); renderKeepInputs(); });
+    return;
+  }
   state.shopping = state.shopping.filter(s=>s.id!==id);
   saveShopping(); render();
 }
@@ -433,12 +648,15 @@ function renderSheet(){
 
 function renderShopping(){
   let html = '<h1>Alışveriş Listesi</h1><div class="sub">Bitenler otomatik burada birikir</div>';
-  if(state.shopping.length===0){
+  html += renderLinkCard();
+  if(cloud.code && !cloud.ready && !cloud.msg){
+    html += '<div class="empty">Liste yükleniyor…</div>';
+  } else if(state.shopping.length===0){
     html += '<div class="empty">Liste boş.<br>Bir şey tükettiğinde ya da attığında otomatik eklenir.</div>';
   } else {
     html += '<div>';
     [...state.shopping].sort((a,b)=>b.addedAt-a.addedAt).forEach(s=>{
-      html += `<div class="shop-row"><div class="name">${s.name}</div>
+      html += `<div class="shop-row"><div class="name">${esc(s.name)}</div>
         <button class="icon-btn" onclick="removeShopping('${s.id}')" title="Aldım">✓</button></div>`;
     });
     html += '</div>';
@@ -446,6 +664,31 @@ function renderShopping(){
   html += `<div class="field-label">elle ekle</div>
     <div class="text-row"><input type="text" id="shopInput" placeholder="Örn. tereyağı"><button onclick="addShoppingManual()">Ekle</button></div>`;
   return html;
+}
+
+function renderLinkCard(){
+  const msg = cloud.msg ? `<div class="link-msg ${cloud.err?'err':''}">${esc(cloud.msg)}</div>` : '';
+  if(!cloud.enabled){
+    return `<div class="link-card"><div class="link-title">👫 Eşinle ortak liste</div>
+      <div class="link-note" style="margin-bottom:0;">Bu özellik için Firebase ayarları henüz girilmedi. Kurulum bitince burada kodla eşleşebileceksin.</div></div>`;
+  }
+  if(cloud.code){
+    return `<div class="link-card linked"><div class="link-title">👫 Ortak liste açık</div>
+      <div class="code-box">${fmtCode(cloud.code)}</div>
+      <div class="link-note">Eşin “Kodu gir” deyip bu kodu yazınca aynı listeyi görür.</div>
+      <div class="link-actions">
+        <button class="chip" onclick="shareCode()">Kodu paylaş</button>
+        <button class="chip" onclick="cloudLeave()">Ayrıl</button>
+      </div>${msg}</div>`;
+  }
+  return `<div class="link-card"><div class="link-title">👫 Eşinle ortak liste</div>
+    <div class="link-note">Liste ikinizde de görünür ve ikiniz de ekleyip silebilirsiniz. Şifre yok, sadece bir kod.</div>
+    <div class="link-actions">
+      <button class="chip" onclick="cloudCreate()" ${cloud.busy?'disabled':''}>Yeni liste oluştur</button>
+      <button class="chip" onclick="toggleJoin()">Kodu gir</button>
+    </div>
+    ${cloud.joinOpen ? `<div class="custom-row"><input type="text" id="joinInput" placeholder="K7M2-9XQP" autocapitalize="characters" autocomplete="off"><button onclick="cloudJoin()" ${cloud.busy?'disabled':''}>Katıl</button></div>` : ''}
+    ${msg}</div>`;
 }
 
 function renderSummary(){
@@ -478,9 +721,18 @@ function attachInputHandlers(){
   const cd = document.getElementById('customDays'); if(cd) cd.addEventListener('keydown', e=>{ if(e.key==='Enter') submitCustomDays(); });
   const rh = document.getElementById('reminderHours'); if(rh) rh.addEventListener('keydown', e=>{ if(e.key==='Enter') submitCustomReminder(); });
   const si = document.getElementById('shopInput'); if(si) si.addEventListener('keydown', e=>{ if(e.key==='Enter') addShoppingManual(); });
+  const ji = document.getElementById('joinInput'); if(ji) ji.addEventListener('keydown', e=>{ if(e.key==='Enter') cloudJoin(); });
 }
 
-loadAll();
+// Ana ekran kısayollarından gelen istekleri oku (manifest.json > shortcuts)
+(function(){
+  const params = new URLSearchParams(location.search);
+  const tab = params.get('tab');
+  if(tab === 'shopping' || tab === 'summary') state.tab = tab;
+  if(params.get('action') === 'add') window.__openAddOnLoad = true;
+})();
+
+loadAll().then(() => { if(window.__openAddOnLoad) openSheet(); });
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
