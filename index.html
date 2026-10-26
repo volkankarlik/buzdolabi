@@ -108,6 +108,7 @@
 <body>
 <div class="wrap" id="app"></div>
 
+<script src="firebase-config.js"></script>
 <script>
 const FOOD_DB = {
   'süt':5,'yumurta':21,'tavuk':2,'kıyma':1,'kırmızı et':3,'balık':1,
@@ -176,15 +177,9 @@ function esc(s){
 }
 
 /* ---------- ORTAK LİSTE (eşinle) ----------
-   Firebase konsolundan aldığın web uygulaması ayarlarını aşağıya yapıştır.
-   "BURAYA" yazan yerler doluysa ortak liste özelliği açılır.
-   Ortak olanlar: alışveriş listesi, buzdolabı/dondurucu ve haftalık özet. */
-const FIREBASE_CONFIG = {
-  apiKey: "BURAYA",
-  authDomain: "BURAYA",
-  projectId: "BURAYA",
-  appId: "BURAYA"
-};
+   Firebase ayarları bu dosyada DEĞİL, yanındaki firebase-config.js dosyasında durur.
+   Böylece bu dosyayı güncellesen de ayarlar bozulmaz. */
+const FIREBASE_CONFIG = window.FIREBASE_CONFIG || { apiKey:'', projectId:'' };
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 harf: 0/O ve 1/I karışmasın
 
 const cloud = { enabled:false, db:null, code:null, unsubs:[], ready:false, itemsReady:false, busy:false, joinOpen:false, msg:'', err:false, msgTimer:null };
